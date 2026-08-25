@@ -57,6 +57,7 @@ function gistProxyPlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
+    base: './',
     plugins: [react(), tailwindcss(), gistProxyPlugin()],
     resolve: {
       alias: {

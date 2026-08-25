@@ -22,13 +22,14 @@ export interface FetchResult {
   error?: string | null;
 }
 
-// Direct GitHub User Content RAW URL (Supports CORS & has no 302 redirects)
+// Direct GitHub User Content RAW URL and GitHub REST API
 const GIST_DIRECT_RAW_URL = 'https://gist.githubusercontent.com/zaibali12369-netizen/2364c4e55c216d7b3ad1cf676f3490e1/raw/Ai.txt';
+const GIST_API_URL = 'https://api.github.com/gists/2364c4e55c216d7b3ad1cf676f3490e1';
 const LOCAL_API_PROXY_URL = '/api/apps';
 const ALLORIGINS_PROXY_URL = `https://api.allorigins.win/raw?url=${encodeURIComponent(GIST_DIRECT_RAW_URL)}`;
 
 const CACHE_KEY = 'mtube_apps_cache_v4';
-const MEMORY_CACHE_EXPIRY_MS = 2000; // 2 seconds high-frequency sync window
+const MEMORY_CACHE_EXPIRY_MS = 1500; // 1.5s responsive sync window
 
 // Embedded baseline manifest snapshot for instant zero-latency loading and offline fallback
 const EMBEDDED_MANIFEST_SNAPSHOT = `
@@ -135,10 +136,12 @@ async function fetchEndpointWithTimeout(
   try {
     const response = await fetch(url, {
       method: 'GET',
+      cache: 'no-store',
       headers: {
-        'Accept': 'text/plain, text/*, */*',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Accept': 'text/plain, application/json, text/*, */*',
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
         'Pragma': 'no-cache',
+        'Expires': '0',
       },
       signal: controller.signal,
     });
@@ -149,11 +152,24 @@ async function fetchEndpointWithTimeout(
       throw new Error(`HTTP ${response.status}`);
     }
 
+    const contentType = response.headers.get('content-type') || '';
+
+    // Check if JSON response (e.g. from GitHub REST API)
+    if (contentType.includes('application/json')) {
+      const json = await response.json();
+      const filesObj = json?.files || {};
+      const fileData = filesObj['Ai.txt'] || Object.values(filesObj)[0] as any;
+      if (fileData && fileData.content && fileData.content.includes('|')) {
+        return { text: fileData.content, sourceType };
+      }
+    }
+
     const text = await response.text();
-    if (text && text.includes('|') && text.includes('http')) {
+    // Validate that this is actual manifest text and not an HTML SPA fallback (<!doctype or <html)
+    if (text && !text.includes('<!doctype') && !text.includes('<html') && text.includes('|') && text.includes('http')) {
       return { text, sourceType };
     }
-    throw new Error('Incomplete manifest payload');
+    throw new Error('Incomplete or invalid manifest payload');
   } catch (err) {
     clearTimeout(timer);
     throw err;
@@ -162,14 +178,15 @@ async function fetchEndpointWithTimeout(
 
 /**
  * High-performance, fast-racing fetch:
- * - Direct parallel race between Direct GitHub User Content CDN and Server Proxy (Fastest wins in ~80-150ms).
+ * - Direct parallel race between Direct GitHub User Content CDN, GitHub REST API, and Server Proxy.
+ * - Cache-busting timestamp on EVERY request ensures zero Netlify caching lag.
  * - Request deduplication avoids redundant socket calls.
  * - Memory caching for ultra-fast instant UI rendering.
  */
 export async function fetchLiveApps(bypassCache: boolean = false): Promise<FetchResult> {
   const now = Date.now();
 
-  // Fast memory cache hit if within 2s window and not explicitly forcing
+  // Fast memory cache hit if within window and not explicitly forcing
   if (!bypassCache && inMemoryApps && inMemoryApps.length > 0 && now - memoryCacheTimestamp < MEMORY_CACHE_EXPIRY_MS) {
     const categories = ['All', ...Array.from(new Set(inMemoryApps.map((a) => a.fileType.toUpperCase())))];
     return {
@@ -188,21 +205,23 @@ export async function fetchLiveApps(bypassCache: boolean = false): Promise<Fetch
 
   inFlightFetchPromise = (async () => {
     try {
-      const cacheBust = `${now}_${Math.random().toString(36).substring(2, 6)}`;
-      const directUrl = `${GIST_DIRECT_RAW_URL}?t=${cacheBust}`;
+      const cacheBust = `${now}_${Math.random().toString(36).substring(2, 8)}`;
+      const directUrl = `${GIST_DIRECT_RAW_URL}?t=${cacheBust}&nocache=${cacheBust}`;
+      const gitHubApiUrl = `${GIST_API_URL}?t=${cacheBust}&_=${cacheBust}`;
       const serverUrl = `${LOCAL_API_PROXY_URL}?force=${bypassCache}&t=${cacheBust}`;
-      const fallbackProxyUrl = `${ALLORIGINS_PROXY_URL}&t=${cacheBust}`;
+      const fallbackProxyUrl = `${ALLORIGINS_PROXY_URL}&t=${cacheBust}&_r=${cacheBust}`;
 
       let winnerResult: { text: string; sourceType: 'live-server' | 'live-direct' | 'live-proxy' } | null = null;
 
-      // Tier 1: Race direct GitHub RAW CDN vs Server Proxy in parallel (Fastest responder wins instantly)
+      // Tier 1: Race direct GitHub RAW CDN, GitHub Gist REST API, and Server Proxy in parallel (Fastest responder wins instantly)
       try {
         winnerResult = await Promise.any([
           fetchEndpointWithTimeout(directUrl, 'live-direct', 3000),
+          fetchEndpointWithTimeout(gitHubApiUrl, 'live-direct', 3000),
           fetchEndpointWithTimeout(serverUrl, 'live-server', 3000),
         ]);
       } catch (raceErr) {
-        // Tier 2: If both fast paths failed, fallback to external proxy
+        // Tier 2: If fast paths failed, fallback to external proxy
         try {
           winnerResult = await fetchEndpointWithTimeout(fallbackProxyUrl, 'live-proxy', 4000);
         } catch {
