@@ -1,0 +1,12 @@
+{
+  "projectId": "my-premium-website",
+  "appId": "1:my-premium-website:web:premium-web",
+  "apiKey": "AIzaSyA8-sXnuITsf01fpihX9tqSbl8cG5-pVWY",
+  "authDomain": "my-premium-website.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "my-premium-website.firebasestorage.app",
+  "messagingSenderId": "my-premium-website",
+  "measurementId": "",
+  "oAuthClientId": "",
+  "recaptchaSiteKey": ""
+}

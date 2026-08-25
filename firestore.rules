@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Premium Keys authorization & multi-device binding collection
+    match /premium_keys/{keyId} {
+      // Clients can read key records to verify binding, active status, license limits, and expiry
+      allow read: if true;
+
+      // Automatic first-use creation: allows registering key with active status and matching key ID
+      allow create: if request.resource.data.status == 'active'
+                    && request.resource.data.key == keyId;
+
+      // Updating: clients can register their device within licenseLimit or refresh lastUsedAt
+      // Blocked keys cannot be updated by clients; key field cannot be changed
+      allow update: if resource.data.status != 'blocked'
+                    && request.resource.data.key == resource.data.key;
+
+      // Deletion is reserved strictly for Firebase Console administrators
+      allow delete: if false;
+    }
+  }
+}

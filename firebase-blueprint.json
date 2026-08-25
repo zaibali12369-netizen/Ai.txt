@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "premium_keys": {
+      "title": "Premium Key Authorization Record",
+      "description": "Stores activation, device binding, and administrative authorization status for individual premium files.",
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "The exact unique premium authorization key from GitHub Gist"
+        },
+        "firebaseUid": {
+          "type": "string",
+          "description": "Firebase User UID or client session identifier bound to this key"
+        },
+        "browserId": {
+          "type": "string",
+          "description": "Persistent browser/device identity token stored in LocalStorage"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "blocked", "expired"],
+          "description": "Administrative status of the license"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when key was first registered in Firebase"
+        },
+        "boundAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when key was bound to device"
+        },
+        "lastUsedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of most recent authorized download"
+        },
+        "expiry": {
+          "type": "string",
+          "description": "Expiration datetime string (e.g. 2028-12-31 23:59:59)"
+        }
+      },
+      "required": ["key", "browserId", "status"]
+    }
+  },
+  "firestoreRules": "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /premium_keys/{keyId} {\n      allow read: if true;\n      allow create: if request.resource.data.status == 'active' && request.resource.data.key == keyId;\n      allow update: if request.resource.data.status == resource.data.status && request.resource.data.key == resource.data.key && request.resource.data.browserId == resource.data.browserId;\n      allow delete: if false;\n    }\n  }\n}"
+}

@@ -1,0 +1,6 @@
+{
+  "name": "NEURA-X: Cybernetic AI & Robotics",
+  "description": "High-fidelity cinematic AI and robotics experience with realistic electric energy pulses, animated internal mechanics, dynamic particle physics, and cybernetic hero visualizer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
